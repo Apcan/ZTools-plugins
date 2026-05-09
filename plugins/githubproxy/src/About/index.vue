@@ -63,7 +63,6 @@ import Header from '../components/Header/index.vue'
 
           <div class="footer">
             <p>Made with ❤️ for GitHub thinkw</p>
-            <p class="version">Version 1.0.0</p>
           </div>
         </div>
       </el-main>

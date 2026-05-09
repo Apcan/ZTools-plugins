@@ -3,6 +3,50 @@ const path = require('node:path')
 const https = require('node:https')
 const http = require('node:http')
 
+// 最大重定向次数
+const MAX_REDIRECTS = 5
+
+// 支持跟随重定向的请求函数
+function requestWithRedirect(url, maxRedirects = MAX_REDIRECTS) {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http
+    
+    protocol.get(url, (response) => {
+      // 处理重定向
+      if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
+        const location = response.headers.location
+        
+        if (!location) {
+          reject(new Error('重定向但缺少 Location 头'))
+          return
+        }
+        
+        if (maxRedirects <= 0) {
+          reject(new Error('超过最大重定向次数'))
+          return
+        }
+        
+        // 关闭当前响应
+        response.destroy()
+        
+        // 处理相对路径
+        const redirectUrl = location.startsWith('http') ? location : new URL(location, url).href
+        
+        // 递归跟随重定向
+        requestWithRedirect(redirectUrl, maxRedirects - 1)
+          .then(resolve)
+          .catch(reject)
+        return
+      }
+      
+      // 返回响应
+      resolve(response)
+    }).on('error', (error) => {
+      reject(error)
+    })
+  })
+}
+
 // 通过 window 对象向渲染进程注入 nodejs 能力
 window.services = {
   // 读文件
@@ -30,8 +74,6 @@ window.services = {
   // 下载文件
   downloadFile (url, options) {
     return new Promise((resolve, reject) => {
-      const protocol = url.startsWith('https') ? https : http
-      
       // 解析参数，兼容旧的调用方式
       let savePath, onProgress;
       if (typeof options === 'string') {
@@ -54,52 +96,55 @@ window.services = {
       
       const file = fs.createWriteStream(filePath)
       
-      protocol.get(url, (response) => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`请求失败: ${response.statusCode}`))
-          file.close()
-          return
-        }
-        
-        // 获取文件总大小
-        const totalSize = parseInt(response.headers['content-length'] || '0', 10);
-        let downloadedSize = 0;
-        
-        // 确保即使没有content-length头，也能显示进度
-        const hasContentLength = response.headers['content-length'] !== undefined;
-        
-        // 监听数据传输事件，计算进度
-        response.on('data', (chunk) => {
-          downloadedSize += chunk.length;
+      // 使用支持重定向的请求函数
+      requestWithRedirect(url)
+        .then((response) => {
+          if (response.statusCode !== 200) {
+            reject(new Error(`请求失败: ${response.statusCode}`))
+            file.close()
+            return
+          }
           
-          if (typeof onProgress === 'function') {
-            if (hasContentLength && totalSize > 0) {
-              // 有content-length头，计算精确进度
-              const progress = Math.round((downloadedSize / totalSize) * 100);
-              onProgress(progress);
-            } else {
-              // 没有content-length头，显示动态进度
-              // 根据下载字节数估算进度，确保进度会变化
-              const estimatedProgress = Math.min(99, Math.round((downloadedSize / (1024 * 1024)) * 10));
-              onProgress(estimatedProgress);
+          // 获取文件总大小
+          const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+          let downloadedSize = 0;
+          
+          // 确保即使没有content-length头，也能显示进度
+          const hasContentLength = response.headers['content-length'] !== undefined;
+          
+          // 监听数据传输事件，计算进度
+          response.on('data', (chunk) => {
+            downloadedSize += chunk.length;
+            
+            if (typeof onProgress === 'function') {
+              if (hasContentLength && totalSize > 0) {
+                // 有content-length头，计算精确进度
+                const progress = Math.round((downloadedSize / totalSize) * 100);
+                onProgress(progress);
+              } else {
+                // 没有content-length头，显示动态进度
+                // 根据下载字节数估算进度，确保进度会变化
+                const estimatedProgress = Math.min(99, Math.round((downloadedSize / (1024 * 1024)) * 10));
+                onProgress(estimatedProgress);
+              }
             }
-          }
-        });
-        
-        response.pipe(file)
-        
-        file.on('finish', () => {
-          file.close()
-          // 下载完成，确保进度显示为100%
-          if (typeof onProgress === 'function') {
-            onProgress(100);
-          }
-          resolve(filePath)
+          });
+          
+          response.pipe(file)
+          
+          file.on('finish', () => {
+            file.close()
+            // 下载完成，确保进度显示为100%
+            if (typeof onProgress === 'function') {
+              onProgress(100);
+            }
+            resolve(filePath)
+          })
         })
-      }).on('error', (error) => {
-        fs.unlink(filePath, () => {})
-        reject(error)
-      })
+        .catch((error) => {
+          fs.unlink(filePath, () => {})
+          reject(error)
+        })
     })
   },
   

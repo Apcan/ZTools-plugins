@@ -141,10 +141,12 @@ const handleLaunchParam = async (param: { code?: string; payload?: string }) => 
   
   githubUrl.value = param.payload
   
-  if (param.code === 'dowload') {
+  if (param.code === 'download') {
     await downloadFile()
   } else if (param.code === 'copygitclone') {
-    await copyToClipboard(gitCloneCommand.value)
+    await copyToClipboard(gitCloneCommand.value)    
+    window.ztools.hideMainWindow(true)
+    window.ztools.outPlugin(true)
   }
 }
 

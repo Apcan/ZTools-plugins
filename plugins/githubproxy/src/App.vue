@@ -27,7 +27,7 @@ const navigateTo = (view: 'home' | 'settings' | 'about') => {
 const handlePluginEnter = (param: { code?: string; payload?: string }) => {
   launchParam.value = param
   
-  if (param.code === 'dowload' || param.code === 'copygitclone') {
+  if (param.code === 'download' || param.code === 'copygitclone') {
     currentView.value = Home
   }
 }
