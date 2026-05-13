@@ -11,6 +11,7 @@ type BaseHashTask = {
   status: TaskStatus
   progress: number
   error: string
+  algorithms: HashAlgorithm[]
   hashes: HashResult | null
 }
 
@@ -35,15 +36,26 @@ type PluginFileEnterAction = {
 type Settings = {
   largeFileWarningEnabled: boolean
   largeFileWarningThresholdGB: number
+  extraAlgorithms: ExtraHashAlgorithm[]
 }
 
 const SETTINGS_KEY = 'my-hash-tool.settings'
 const DEFAULT_SETTINGS: Settings = {
   largeFileWarningEnabled: true,
-  largeFileWarningThresholdGB: 2
+  largeFileWarningThresholdGB: 2,
+  extraAlgorithms: []
 }
 const BYTES_PER_GB = 1024 * 1024 * 1024
-const HASH_ALGORITHMS: Array<keyof HashResult> = ['md5', 'sha1', 'sha256']
+const CORE_HASH_ALGORITHMS: CoreHashAlgorithm[] = ['md5', 'sha1', 'sha256']
+const EXTRA_HASH_ALGORITHMS: ExtraHashAlgorithm[] = ['crc32', 'sha384', 'sha512']
+const HASH_ALGORITHM_LABELS: Record<HashAlgorithm, string> = {
+  md5: 'MD5',
+  sha1: 'SHA1',
+  sha256: 'SHA256',
+  crc32: 'CRC32',
+  sha384: 'SHA384',
+  sha512: 'SHA512'
+}
 
 const route = ref<'main' | 'settings'>('main')
 const tasks = ref<HashTask[]>([])
@@ -86,6 +98,18 @@ const taskSummary = computed(() => {
   return summary
 })
 
+const batchProgress = computed(() => {
+  if (!tasks.value.length) return 0
+
+  const totalProgress = tasks.value.reduce((sum, task) => sum + task.progress, 0)
+  return Math.round(totalProgress / tasks.value.length)
+})
+
+const enabledAlgorithms = computed<HashAlgorithm[]>(() => [
+  ...CORE_HASH_ALGORITHMS,
+  ...settings.extraAlgorithms
+])
+
 const warningSummary = computed(() => {
   const totalSize = warningFiles.value.reduce((sum, file) => sum + file.size, 0)
 
@@ -120,6 +144,11 @@ function saveSettings() {
 
 function normalizeSettings(value?: Partial<Settings> | null): Settings {
   const threshold = Number(value?.largeFileWarningThresholdGB)
+  const extraAlgorithms = Array.isArray(value?.extraAlgorithms)
+    ? value.extraAlgorithms.filter((algorithm): algorithm is ExtraHashAlgorithm =>
+        EXTRA_HASH_ALGORITHMS.includes(algorithm as ExtraHashAlgorithm)
+      )
+    : DEFAULT_SETTINGS.extraAlgorithms
 
   return {
     largeFileWarningEnabled:
@@ -129,7 +158,8 @@ function normalizeSettings(value?: Partial<Settings> | null): Settings {
     largeFileWarningThresholdGB:
       Number.isFinite(threshold) && threshold >= 1 && threshold <= 1024
         ? Number(threshold.toFixed(2))
-        : DEFAULT_SETTINGS.largeFileWarningThresholdGB
+        : DEFAULT_SETTINGS.largeFileWarningThresholdGB,
+    extraAlgorithms: Array.from(new Set(extraAlgorithms))
   }
 }
 
@@ -274,7 +304,8 @@ function cancelWarning() {
 }
 
 async function startHashing(files: FileInfo[]) {
-  tasks.value = files.map(createTask)
+  const algorithms = enabledAlgorithms.value
+  tasks.value = files.map((file) => createTask(file, algorithms))
   isHashing.value = true
 
   for (const task of tasks.value) {
@@ -283,7 +314,7 @@ async function startHashing(files: FileInfo[]) {
     task.progress = 0
 
     try {
-      task.hashes = await window.services.hashFile(task.path, (progress) => {
+      task.hashes = await window.services.hashFile(task.path, task.algorithms, (progress) => {
         task.progress = Math.round(progress.progress)
       })
       task.progress = 100
@@ -300,7 +331,7 @@ async function startHashing(files: FileInfo[]) {
 }
 
 function startTextHashing(text: string) {
-  const task = createTextTask(text)
+  const task = createTextTask(text, enabledAlgorithms.value)
   tasks.value = [task]
   isHashing.value = true
   task.status = 'hashing'
@@ -308,7 +339,7 @@ function startTextHashing(text: string) {
 
   window.setTimeout(() => {
     try {
-      task.hashes = window.services.hashText(text)
+      task.hashes = window.services.hashText(text, task.algorithms)
       task.progress = 100
       task.status = 'done'
     } catch (error) {
@@ -321,7 +352,7 @@ function startTextHashing(text: string) {
   }, 80)
 }
 
-function createTask(file: FileInfo): FileHashTask {
+function createTask(file: FileInfo, algorithms: HashAlgorithm[]): FileHashTask {
   return {
     ...file,
     id: `${file.path}-${file.size}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -329,11 +360,12 @@ function createTask(file: FileInfo): FileHashTask {
     status: 'waiting',
     progress: 0,
     error: '',
+    algorithms: [...algorithms],
     hashes: null
   }
 }
 
-function createTextTask(text: string): TextHashTask {
+function createTextTask(text: string, algorithms: HashAlgorithm[]): TextHashTask {
   return {
     id: `text-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     kind: 'text',
@@ -344,6 +376,7 @@ function createTextTask(text: string): TextHashTask {
     status: 'waiting',
     progress: 0,
     error: '',
+    algorithms: [...algorithms],
     hashes: null
   }
 }
@@ -355,17 +388,18 @@ function getStatusText(task: HashTask) {
   return task.kind === 'file' ? `读取失败：${task.error}` : `计算失败：${task.error}`
 }
 
-function getHashValue(task: HashTask, algorithm: keyof HashResult) {
-  if (task.status === 'done' && task.hashes) return task.hashes[algorithm]
+function getHashValue(task: HashTask, algorithm: HashAlgorithm) {
+  if (task.status === 'done' && task.hashes) return task.hashes[algorithm] || '未计算'
   if (task.status === 'error') return '未计算'
   if (task.status === 'waiting') return '等待计算'
   return '正在计算...'
 }
 
-async function copyHash(task: HashTask, algorithm: keyof HashResult) {
+async function copyHash(task: HashTask, algorithm: HashAlgorithm) {
   if (!task.hashes) return
 
   const value = task.hashes[algorithm]
+  if (!value) return
 
   if (!(await copyText(value))) return
 
@@ -424,10 +458,24 @@ function formatTaskHashes(task: HashTask) {
 
   return [
     title,
-    `MD5: ${task.hashes.md5}`,
-    `SHA1: ${task.hashes.sha1}`,
-    `SHA256: ${task.hashes.sha256}`
+    ...task.algorithms.map((algorithm) => `${HASH_ALGORITHM_LABELS[algorithm]}: ${task.hashes?.[algorithm] || '未计算'}`)
   ].join('\n')
+}
+
+function toggleExtraAlgorithm(algorithm: ExtraHashAlgorithm, enabled: boolean) {
+  const nextAlgorithms = new Set(settings.extraAlgorithms)
+  if (enabled) {
+    nextAlgorithms.add(algorithm)
+  } else {
+    nextAlgorithms.delete(algorithm)
+  }
+
+  settings.extraAlgorithms = EXTRA_HASH_ALGORITHMS.filter((item) => nextAlgorithms.has(item))
+  saveSettings()
+}
+
+function isExtraAlgorithmEnabled(algorithm: ExtraHashAlgorithm) {
+  return settings.extraAlgorithms.includes(algorithm)
 }
 
 function formatBytes(bytes: number) {
@@ -535,7 +583,7 @@ onMounted(() => {
   >
     <template v-if="route === 'main'">
       <header class="main-actions">
-        <span class="algorithm-note">MD5 / SHA1 / SHA256</span>
+        <span class="algorithm-note">{{ enabledAlgorithms.map((algorithm) => HASH_ALGORITHM_LABELS[algorithm]).join(' / ') }}</span>
         <div class="main-action-buttons">
           <button
             v-if="tasks.length && !isHashing"
@@ -578,7 +626,7 @@ onMounted(() => {
           @keydown.ctrl.enter.prevent="hashTextInput"
         ></textarea>
         <div class="input-actions">
-          <span class="shortcut-hint">⌘/Ctrl + Enter 开始计算</span>
+          <span class="shortcut-hint">⌘/Ctrl + Enter 计算字符串</span>
           <button
             class="secondary-button"
             type="button"
@@ -593,17 +641,26 @@ onMounted(() => {
         </div>
       </section>
 
-      <section v-if="tasks.length > 1" class="summary-strip" aria-label="任务汇总">
-        <span>本次任务：{{ taskSummary.total }} 项</span>
-        <span>已完成 {{ taskSummary.done }}</span>
-        <span>正在计算 {{ taskSummary.hashing }}</span>
-        <span>等待 {{ taskSummary.waiting }}</span>
-        <span v-if="taskSummary.error">失败 {{ taskSummary.error }}</span>
+      <section v-if="tasks.length > 1" class="batch-panel" aria-label="任务汇总">
+        <div class="batch-panel__header">
+          <span>{{ isHashing ? '批量计算中' : '批量计算完成' }}</span>
+          <strong>{{ batchProgress }}%</strong>
+        </div>
+        <div class="batch-progress" aria-hidden="true">
+          <span class="batch-progress__done" :style="{ width: `${batchProgress}%` }"></span>
+        </div>
+        <div class="batch-stats">
+          <span>{{ taskSummary.total }} 项</span>
+          <span>{{ taskSummary.done }} 完成</span>
+          <span v-if="taskSummary.hashing">{{ taskSummary.hashing }} 计算中</span>
+          <span v-if="taskSummary.waiting">{{ taskSummary.waiting }} 等待</span>
+          <span v-if="taskSummary.error">{{ taskSummary.error }} 失败</span>
+        </div>
       </section>
 
       <section v-if="!tasks.length" class="empty-state">
         <h2>计算结果会显示在这里</h2>
-        <p>字符串会直接计算；文件会分块读取，MD5、SHA1、SHA256 会在同一遍文件流中完成。</p>
+        <p>字符串会直接计算；文件会分块读取，已启用的算法会在同一遍文件流中完成。</p>
       </section>
 
       <section v-else class="task-list" aria-label="Hash 计算结果">
@@ -650,8 +707,8 @@ onMounted(() => {
           </div>
 
           <dl class="hash-list">
-            <div v-for="algorithm in HASH_ALGORITHMS" :key="algorithm" class="hash-row">
-              <dt>{{ algorithm.toUpperCase() }}</dt>
+            <div v-for="algorithm in task.algorithms" :key="algorithm" class="hash-row">
+              <dt>{{ HASH_ALGORITHM_LABELS[algorithm] }}</dt>
               <dd>
                 <button
                   type="button"
@@ -748,6 +805,21 @@ onMounted(() => {
             />
             <strong>GB</strong>
           </span>
+        </label>
+
+        <div class="settings-copy settings-copy--section">
+          <h2>额外算法</h2>
+          <p>默认只启用 MD5、SHA1、SHA256；勾选后会在下一次计算时生效。</p>
+        </div>
+
+        <label v-for="algorithm in EXTRA_HASH_ALGORITHMS" :key="algorithm" class="switch-row">
+          <span>{{ HASH_ALGORITHM_LABELS[algorithm] }}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            :checked="isExtraAlgorithmEnabled(algorithm)"
+            @change="toggleExtraAlgorithm(algorithm, ($event.target as HTMLInputElement).checked)"
+          />
         </label>
       </section>
     </template>
