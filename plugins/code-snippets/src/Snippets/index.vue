@@ -535,6 +535,7 @@ const handleDeleteAll = () => {
 }
 
 const handleKeydown = async (e: KeyboardEvent) => {
+  if (e.repeat) return
   // Alt+1~5: quick copy first 5 templates (always active)
   if (e.altKey && !e.ctrlKey && !e.shiftKey) {
     const num = parseInt(e.key)
@@ -548,14 +549,28 @@ const handleKeydown = async (e: KeyboardEvent) => {
     // Alt+Insert: quick new template
     if (e.key === 'Insert') {
       e.preventDefault()
-      let clipboardText = ''
-      try {
-        clipboardText = await navigator.clipboard.readText()
-      } catch { /* clipboard read failed */ }
-      handleNew()
-      if (clipboardText) form.value.code = clipboardText
+      if (viewMode.value === 'edit') {
+        ElMessageBox.confirm('当前正在编辑模板，确定新建？未保存的内容将丢失', '新建确认', {
+          confirmButtonText: '新建',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }).then(() => {
+          handleNewWithClipboard()
+        }).catch(() => {})
+      } else {
+        handleNewWithClipboard()
+      }
     }
   }
+}
+
+const handleNewWithClipboard = async () => {
+  let clipboardText = ''
+  try {
+    clipboardText = await navigator.clipboard.readText()
+  } catch { /* clipboard read failed */ }
+  handleNew()
+  if (clipboardText) form.value.code = clipboardText
 }
 
 onMounted(() => {
