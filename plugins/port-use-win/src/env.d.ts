@@ -21,14 +21,13 @@ declare global {
     remotePort: string
   }
 
-  // Preload services 类型声明（对应 public/preload/services.js）
   interface Services {
     getPortUsage: () => PortUsage[]
     killProcess: (pid: number) => { pid: number; processName?: string }
   }
 
   interface Window {
-    services: Services
+    services?: Services
     servicesLoadError?: string
   }
 }

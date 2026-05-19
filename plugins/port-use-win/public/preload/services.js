@@ -15,23 +15,39 @@ $payload = @{
 $payload | ConvertTo-Json -Depth 4 -Compress
 `
 
+function parseJsonOutput(raw, actionLabel) {
+  try {
+    return JSON.parse(raw)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`${actionLabel} 返回了无法解析的内容: ${detail}`)
+  }
+}
+
 function runPwsh(script) {
   if (!spawnSync) {
     throw new Error(window.servicesLoadError || 'preload 未能加载 child_process')
   }
 
-  const result = spawnSync('pwsh', ['-NoProfile', '-Command', script], {
+  const args = ['-NoProfile', '-Command', script]
+  const options = {
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: 10 * 1024 * 1024
-  })
+  }
+
+  // Windows 上不一定安装 PowerShell Core，这里优先 pwsh，再兼容系统自带的 powershell.exe。
+  let result = spawnSync('pwsh', args, options)
+  if (result.error && result.error.code === 'ENOENT') {
+    result = spawnSync('powershell', args, options)
+  }
 
   if (result.error) {
     throw result.error
   }
 
   if (result.status !== 0) {
-    const detail = result.stderr || result.stdout || `pwsh exited with code ${result.status}`
+    const detail = result.stderr || result.stdout || `PowerShell exited with code ${result.status}`
     throw new Error(detail.trim())
   }
 
@@ -169,14 +185,13 @@ function comparePortUsage(left, right) {
 try {
   window.services = {
     getPortUsage() {
-      // 当前环境下 Get-NetTCPConnection / Get-NetUDPEndpoint 可能直接拒绝访问，
-      // 这里改用 pwsh 调 netstat，再结合 Get-Process 补齐进程名，避免普通用户场景失效。
+      // Get-NetTCPConnection 在普通权限下可能被拒绝，这里改用 netstat 再补进程名，兼容性更稳。
       const raw = runPwsh(PORT_QUERY_SCRIPT).trim()
       if (!raw) {
         return []
       }
 
-      const payload = JSON.parse(raw)
+      const payload = parseJsonOutput(raw, '端口查询')
       const processMap = normalizeProcessMap(payload.processes)
       const tcpEntries = parseNetstatLines(payload.tcpLines, 'TCP', processMap)
       const udpEntries = parseNetstatLines(payload.udpLines, 'UDP', processMap)
@@ -200,7 +215,7 @@ Stop-Process -Id ${numericPid} -Force -ErrorAction Stop
 `
 
       const raw = runPwsh(script).trim()
-      return raw ? JSON.parse(raw) : { pid: numericPid }
+      return raw ? parseJsonOutput(raw, '结束进程') : { pid: numericPid }
     }
   }
 } catch (error) {

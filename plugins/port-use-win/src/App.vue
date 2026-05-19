@@ -9,6 +9,8 @@ interface LaunchAction {
   payload?: unknown
 }
 
+type FilterField = 'all' | 'name' | 'pid' | 'port' | 'local' | 'remote' | 'state' | 'protocol'
+
 const FEATURE_CODE = 'port-use-win'
 
 const entries = ref<PortUsage[]>([])
@@ -17,7 +19,7 @@ const killingPid = ref<number | null>(null)
 const errorMessage = ref('')
 const keyword = ref('')
 const lastUpdatedAt = ref('')
-const filterField = ref('all')
+const filterField = ref<FilterField>('all')
 
 const FILTER_OPTIONS = [
   { label: '全部字段', value: 'all' },
@@ -28,7 +30,7 @@ const FILTER_OPTIONS = [
   { label: '远程地址', value: 'remote' },
   { label: '状态', value: 'state' },
   { label: '协议', value: 'protocol' }
-]
+] as const
 
 function normalizeSearchText(value: string) {
   return value.trim().toLowerCase()
@@ -39,7 +41,7 @@ function hasMeaningfulRemoteAddress(entry: PortUsage) {
   return !['', '0.0.0.0:0', '*:*', '[::]:0'].includes(remoteAddress)
 }
 
-function matchEntryByField(entry: PortUsage, field: string, value: string) {
+function matchEntryByField(entry: PortUsage, field: FilterField, value: string) {
   const query = normalizeSearchText(value)
   if (!query) {
     return true
@@ -65,6 +67,10 @@ function matchEntryByField(entry: PortUsage, field: string, value: string) {
   }
 
   if (field === 'pid') {
+    if (/^\d+$/.test(query)) {
+      return String(entry.pid) === query
+    }
+
     return String(entry.pid).includes(query)
   }
 
@@ -112,7 +118,7 @@ function formatEntryMeta(entry: PortUsage) {
   return [`PID ${entry.pid}`, entry.protocol].join(' · ')
 }
 
-function getServices() {
+function getServices(): Services {
   if (window.services) {
     return window.services
   }
