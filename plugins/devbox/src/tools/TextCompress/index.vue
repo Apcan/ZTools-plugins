@@ -22,33 +22,39 @@ const stats = computed(() => {
   }
 })
 
+const PLACEHOLDER_PREFIX = '\x00__ZQUOTED'
+const PLACEHOLDER_SUFFIX = '\x00'
+
 function protectQuotedContent(text: string): { result: string; store: string[] } {
   const store: string[] = []
-  const P = '\x00QP'
-  let result = text.replace(/"[^"]*"/g, (m) => { store.push(m); return P + (store.length - 1) + '\x00' })
-  result = result.replace(/'[^']*'/g, (m) => { store.push(m); return P + (store.length - 1) + '\x00' })
-  result = result.replace(/`[^`]*`/g, (m) => { store.push(m); return P + (store.length - 1) + '\x00' })
+  const P = PLACEHOLDER_PREFIX
+  const S = PLACEHOLDER_SUFFIX
+  let result = text.replace(/"(?:\\.|[^"\\])*"/g, (m) => { store.push(m); return P + (store.length - 1) + S })
+  result = result.replace(/'(?:\\.|[^'\\])*'/g, (m) => { store.push(m); return P + (store.length - 1) + S })
+  result = result.replace(/`(?:\\.|[^`\\])*`/g, (m) => { store.push(m); return P + (store.length - 1) + S })
   return { result, store }
 }
 
 function restoreQuotedContent(text: string, store: string[]): string {
-  return text.replace(/\x00QP(\d+)\x00/g, (_, idx) => store[+idx])
+  const re = new RegExp('\x00__ZQUOTED(\\d+)\x00', 'g')
+  return text.replace(re, (_, idx) => store[+idx])
 }
 
 function wordWrap(text: string, maxLen: number): string {
   if (maxLen <= 0) return text
   const lines: string[] = []
   while (text.length > maxLen) {
-    const breakPoint = text.lastIndexOf(' ', maxLen - 1)
+    let breakPoint = text.lastIndexOf(' ', maxLen - 1)
     if (breakPoint === -1) {
-      lines.push(text.slice(0, maxLen))
-      text = text.slice(maxLen)
-    } else {
-      lines.push(text.slice(0, breakPoint))
-      text = text.slice(breakPoint + 1)
+      breakPoint = text.indexOf(' ', maxLen)
     }
+    if (breakPoint === -1) {
+      break
+    }
+    lines.push(text.slice(0, breakPoint))
+    text = text.slice(breakPoint + 1).trimStart()
   }
-  lines.push(text)
+  if (text) lines.push(text)
   return lines.join('\n')
 }
 
