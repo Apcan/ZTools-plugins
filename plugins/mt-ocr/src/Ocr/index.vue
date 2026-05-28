@@ -169,6 +169,7 @@ function clearImage() {
   imageRawBase64.value = ''
   result.value = null
   errorMsg.value = ''
+  recognizing.value = false
 }
 
 // ========== 拖放处理 ==========
@@ -228,7 +229,8 @@ function onPaste(e: ClipboardEvent) {
 // ========== OCR 识别 ==========
 
 async function handleRecognize() {
-  if (!imageRawBase64.value) return
+  const currentImage = imageRawBase64.value
+  if (!currentImage) return
 
   if (noVendorConfigured.value) {
     errorMsg.value = '请先配置至少一个 OCR 服务的 API 密钥'
@@ -245,11 +247,18 @@ async function handleRecognize() {
       vendors: ocrConfig.value.vendors
     })
 
-    result.value = await service.recognize(imageRawBase64.value)
+    const res = await service.recognize(currentImage)
+    if (imageRawBase64.value === currentImage) {
+      result.value = res
+    }
   } catch (e: any) {
-    errorMsg.value = e.message || '识别失败'
+    if (imageRawBase64.value === currentImage) {
+      errorMsg.value = e.message || '识别失败'
+    }
   } finally {
-    recognizing.value = false
+    if (imageRawBase64.value === currentImage) {
+      recognizing.value = false
+    }
   }
 }
 
@@ -264,18 +273,22 @@ function handleCopyText() {
 
 function handleSaveText() {
   if (resultText.value) {
-    const path = window.services.writeTextFile(resultText.value)
-    if (path) {
-      window.ztools.shellShowItemInFolder(path)
+    try {
+      const path = window.services.writeTextFile(resultText.value)
+      if (path) window.ztools.shellShowItemInFolder(path)
+    } catch (e: any) {
+      window.ztools.showNotification('保存文本失败: ' + (e.message || ''))
     }
   }
 }
 
 function handleSaveImage() {
   if (imageData.value) {
-    const path = window.services.writeImageFile(imageData.value)
-    if (path) {
-      window.ztools.shellShowItemInFolder(path)
+    try {
+      const path = window.services.writeImageFile(imageData.value)
+      if (path) window.ztools.shellShowItemInFolder(path)
+    } catch (e: any) {
+      window.ztools.showNotification('保存图片失败: ' + (e.message || ''))
     }
   }
 }

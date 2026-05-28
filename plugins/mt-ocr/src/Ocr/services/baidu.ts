@@ -21,15 +21,24 @@ async function getAccessToken(apiKey: string, secretKey: string): Promise<string
 
 // 缓存 token，避免每次请求都重新获取
 let cachedToken: string | null = null
+let cachedApiKey: string | null = null
+let cachedSecretKey: string | null = null
 let tokenExpireTime = 0
 
 async function ensureAccessToken(apiKey: string, secretKey: string): Promise<string> {
   const now = Date.now()
-  if (cachedToken && now < tokenExpireTime) {
+  if (
+    cachedToken &&
+    now < tokenExpireTime &&
+    apiKey === cachedApiKey &&
+    secretKey === cachedSecretKey
+  ) {
     return cachedToken
   }
   cachedToken = await getAccessToken(apiKey, secretKey)
   tokenExpireTime = now + 25 * 24 * 60 * 60 * 1000 // token 有效期约30天，提前5天刷新
+  cachedApiKey = apiKey
+  cachedSecretKey = secretKey
   return cachedToken
 }
 

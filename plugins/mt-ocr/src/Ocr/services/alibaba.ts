@@ -136,28 +136,27 @@ export function createAlibabaService(accessKeyId: string, accessKeySecret: strin
         } : undefined
       }))
 
-      // 尝试按行组织文字
-      const lines: string[] = []
-      let currentLine = ''
-      let lastY = -1
-      const sorted = [...words].sort((a, b) => {
-        const ya = a.position?.y || 0
-        const yb = b.position?.y || 0
-        if (Math.abs(ya - yb) > 5) return ya - yb
-        return (a.position?.x || 0) - (b.position?.x || 0)
-      })
-
-      for (const w of sorted) {
+      // 尝试按行组织文字（先稳定按 Y 排序，再归行，最后每行按 X 排序）
+      const sortedByY = [...words].sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0))
+      const linesOfWords: (typeof words)[] = []
+      for (const w of sortedByY) {
         const y = w.position?.y || 0
-        if (lastY >= 0 && Math.abs(y - lastY) > 5) {
-          if (currentLine) lines.push(currentLine)
-          currentLine = w.text
-        } else {
-          currentLine += (currentLine ? '' : '') + w.text
+        let added = false
+        for (const line of linesOfWords) {
+          const lineY = line[0].position?.y || 0
+          if (Math.abs(y - lineY) <= 5) {
+            line.push(w)
+            added = true
+            break
+          }
         }
-        lastY = y
+        if (!added) linesOfWords.push([w])
       }
-      if (currentLine) lines.push(currentLine)
+      const lines: string[] = []
+      for (const line of linesOfWords) {
+        const sortedLine = line.sort((a, b) => (a.position?.x || 0) - (b.position?.x || 0))
+        lines.push(sortedLine.map(w => w.text).join(''))
+      }
 
       return {
         text: lines.join('\n') || words.map(w => w.text).join(''),
