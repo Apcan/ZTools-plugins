@@ -38,11 +38,19 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process'
           import { readFileSync, appendFileSync } from 'node:fs'
 
           const eventName = process.env.EVENT_NAME
           const outputPath = process.env.GITHUB_OUTPUT
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          }
+
+          if (process.env.GH_TOKEN) {
+            headers.Authorization = `Bearer ${process.env.GH_TOKEN}`
+          }
+
           let pullRequest
 
           if (eventName === 'pull_request') {
@@ -53,12 +61,11 @@ jobs:
             if (!prNumber) {
               throw new Error('workflow_dispatch requires pr_number')
             }
-            const payload = execFileSync(
-              'gh',
-              ['api', `/repos/${process.env.REPOSITORY}/pulls/${prNumber}`],
-              { encoding: 'utf8' },
-            )
-            pullRequest = JSON.parse(payload)
+            const response = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/pulls/${prNumber}`, { headers })
+            if (!response.ok) {
+              throw new Error(`Failed to fetch PR metadata: ${response.status} ${response.statusText} ${await response.text()}`)
+            }
+            pullRequest = await response.json()
           }
 
           const outputs = {
@@ -111,42 +118,60 @@ jobs:
 
           mkdir -p release
 
-          changed_plugins=$(
-            gh api --paginate "/repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename' |
-            awk -F/ '/^plugins\/[^/]+\// {print $2}' |
-            sort -u |
-            paste -sd, -
-          )
+          node --input-type=module <<'NODE'
+          import { appendFileSync, writeFileSync } from 'node:fs'
 
-          if [ -z "${changed_plugins}" ]; then
-            echo "No plugin changes detected."
-            echo "has_changes=false" >> "${GITHUB_OUTPUT}"
-            node --input-type=module <<'NODE'
-            import { writeFileSync } from 'node:fs'
+          const token = process.env.GH_TOKEN
+          const repository = process.env.REPOSITORY
+          const prNumber = process.env.PR_NUMBER
+          const outputPath = process.env.GITHUB_OUTPUT
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          }
 
-            writeFileSync('release/build-info.json', JSON.stringify({
-              hasChanges: false,
-              releaseVersion: `pr-${process.env.PR_NUMBER}`,
-              changedPlugins: [],
-              buildAll: false,
-            }, null, 2))
-            NODE
-            exit 0
-          fi
+          if (token) {
+            headers.Authorization = `Bearer ${token}`
+          }
 
-          echo "Changed plugins: ${changed_plugins}"
-          echo "has_changes=true" >> "${GITHUB_OUTPUT}"
-          echo "changed_plugins=${changed_plugins}" >> "${GITHUB_OUTPUT}"
+          const files = []
+          for (let page = 1; ; page += 1) {
+            const url = `https://api.github.com/repos/${repository}/pulls/${prNumber}/files?per_page=100&page=${page}`
+            const response = await fetch(url, { headers })
+            if (!response.ok) {
+              throw new Error(`Failed to fetch PR files: ${response.status} ${response.statusText} ${await response.text()}`)
+            }
 
-          CHANGED_PLUGINS="${changed_plugins}" node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs'
+            const pageFiles = await response.json()
+            files.push(...pageFiles.map(file => file.filename))
+            if (pageFiles.length < 100) {
+              break
+            }
+          }
 
-          writeFileSync('release/build-info.json', JSON.stringify({
-            hasChanges: true,
-            releaseVersion: `pr-${process.env.PR_NUMBER}`,
-            changedPlugins: process.env.CHANGED_PLUGINS.split(',').filter(Boolean),
+          const changedPlugins = [...new Set(
+            files
+              .map(file => file.match(/^plugins\/([^/]+)\//)?.[1])
+              .filter(Boolean),
+          )].sort()
+
+          const hasChanges = changedPlugins.length > 0
+          const buildInfo = {
+            hasChanges,
+            releaseVersion: `pr-${prNumber}`,
+            changedPlugins,
             buildAll: false,
-          }, null, 2))
+          }
+
+          writeFileSync('release/build-info.json', JSON.stringify(buildInfo, null, 2))
+          appendFileSync(outputPath, `has_changes=${hasChanges ? 'true' : 'false'}\n`)
+          appendFileSync(outputPath, `changed_plugins=${changedPlugins.join(',')}\n`)
+
+          if (hasChanges) {
+            console.log(`Changed plugins: ${changedPlugins.join(', ')}`)
+          } else {
+            console.log('No plugin changes detected.')
+          }
           NODE
 
           cat release/build-info.json
