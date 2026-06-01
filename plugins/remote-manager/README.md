@@ -1,281 +1,103 @@
-# {{PLUGIN_NAME}}
+# 远程桌面管理
 
-> {{DESCRIPTION}}
+> ZTools 插件 —— 管理 Windows 远程桌面，快捷开启远程连接
 
-这是一个使用 **Vue 3 + Vite + TypeScript** 构建的 ZTools 插件。
+## 项目简介
 
-## ✨ 功能特性
+本项目是一个 [ZTools](https://github.com/ZToolsCenter/ZTools) 插件。
 
-### 📌 已包含的示例功能
+本插件用于集中管理常用的 Windows 远程桌面主机信息，支持一键发起远程连接，避免每次手动输入 IP、用户名和密码。
 
-- **Hello** - 基础功能指令示例
-  - 触发指令：`你好` / `hello`
-  - 展示简单的 Vue 组件界面
+## 功能特性
 
-- **读文件** - 文件读取功能示例
-  - 功能指令：`读文件`
-  - 匹配指令：支持拖拽文件触发
-  - 演示如何使用 Node.js 能力读取文件内容
+- **主机管理** —— 支持新增、编辑、删除远程主机记录
+- **字段定义** —— 每条记录包含编号（唯一标识，支持中文）、地址/域名、用户名、密码
+- **一键连接** —— 点击连接按钮，自动生成 RDP 配置文件并调用 `mstsc.exe` 发起远程桌面连接
+- **凭据存储** —— 使用 `cmdkey` 预存 Windows 凭据，实现免密连接体验
+- **搜索筛选** —— 支持按编号实时搜索筛选列表
+- **数据持久化** —— 主机列表存储在 ZTools 用户数据目录的 `hosts.json` 文件中
 
-- **保存为文件** - 文件写入功能示例
-  - 匹配指令：任意文本/图片 → `保存为文件`
-  - 演示如何将剪贴板内容保存为文件
+## 技术栈
 
-## 📁 项目结构
+- **Vue 3** —— 前端框架
+- **Vite** —— 构建工具
+- **TypeScript** —— 类型安全
+
+## 项目结构
 
 ```
 .
 ├── public/
-│   ├── logo.png              # 插件图标
-│   ├── plugin.json           # 插件配置文件
-│   └── preload/              # Preload 脚本目录
-│       ├── package.json      # Preload 依赖配置
-│       └── services.js       # Node.js 能力扩展
+│   ├── logo.png                # 插件图标
+│   ├── plugin.json             # 插件配置文件（名称、指令、入口等）
+│   ├── index.html              # 开发模式入口（加载 localhost:5173）
+│   └── preload/
+│       ├── package.json        # Preload 依赖配置
+│       └── services.js         # Node.js 能力扩展（RDP 连接、主机 CRUD）
 ├── src/
-│   ├── main.ts               # 入口文件
-│   ├── main.css              # 全局样式
-│   ├── App.vue               # 根组件
-│   ├── env.d.ts              # 类型声明
-│   ├── Hello/                # Hello 功能组件
-│   │   └── index.vue
-│   ├── Read/                 # 读文件功能组件
-│   │   └── index.vue
-│   └── Write/                # 写文件功能组件
-│       └── index.vue
-├── index.html                # HTML 模板
-├── vite.config.js            # Vite 配置
-├── tsconfig.json             # TypeScript 配置
-├── package.json              # 项目依赖
-└── README.md                 # 项目文档
+│   ├── main.ts                 # Vue 应用入口（含浏览器开发 mock）
+│   ├── main.css                # 全局样式
+│   ├── App.vue                 # 根组件
+│   ├── env.d.ts                # 类型声明（window.services / window.ztools）
+│   └── RemoteManager/
+│       └── index.vue           # 主界面组件（工具栏、表格、弹窗）
+├── index.html                  # Vite 入口 HTML 模板
+├── vite.config.js              # Vite 配置
+├── tsconfig.json               # TypeScript 配置
+├── package.json                # 项目依赖
+└── README.md                   # 项目文档
 ```
 
-## 🚀 快速开始
+## 核心文件说明
 
-### 安装依赖
+### `public/plugin.json`
 
-```bash
-npm install
-```
+ZTools 插件配置文件，定义插件名称、触发指令、入口文件、preload 脚本等。
 
-### 开发模式
+### `public/preload/services.js`
 
-```bash
-npm run dev
-```
+向渲染进程注入 Node.js 能力的 Preload 脚本，提供以下服务：
 
-开发服务器将在 `http://localhost:5173` 启动。ZTools 会自动加载开发版本。
+| 方法 | 说明 |
+|------|------|
+| `getHosts()` | 读取已保存的主机列表 |
+| `addHost(host)` | 新增主机（编号唯一性校验） |
+| `updateHost(originalId, host)` | 编辑主机 |
+| `deleteHost(id)` | 删除主机 |
+| `connectRdp(address, username, password)` | 生成临时 RDP 文件，使用 `cmdkey` 存储凭据，调用 `mstsc.exe` 连接，5秒后清理凭据和临时文件 |
 
-### 构建生产版本
+密码使用 `base64` 编码存储于 `hosts.json` 中。
 
-```bash
-npm run build
-```
+### `src/RemoteManager/index.vue`
 
-构建产物将输出到 `dist/` 目录。
+插件主界面组件，包含：
 
-## 📖 开发指南
+- **工具栏** —— 插件标题、搜索框、新增主机按钮
+- **主机列表** —— 表格展示，支持 hover 高亮
+- **操作列** —— 每行末尾提供「连接」「编辑」「删除」按钮
+- **弹窗表单** —— 新增/编辑主机时弹出的模态框，含编号、地址、用户名、密码输入
+- **提示消息** —— 操作成功或失败的临时 Toast 提示
 
-### 1. 修改插件配置
+### `src/main.ts`
 
-编辑 `public/plugin.json` 文件：
+Vue 应用入口。在开发模式下（`import.meta.env.DEV`）注入 `window.ztools` 和 `window.services` 的 mock 对象，使插件可以在浏览器中独立预览，无需依赖 ZTools 环境。
 
-```json
-{
-  "name": "你的插件名称",
-  "description": "插件描述",
-  "author": "作者名称",
-  "version": "1.0.0",
-  "features": [
-    // 添加你的功能配置
-  ]
-}
-```
+## 使用方式
 
-### 2. 创建新功能
+1. 在 ZTools 中输入触发指令：`远程桌面`、`rdp` 或 `远程连接`
+2. 进入插件后点击「新增主机」填写信息
+3. 在列表中点击「连接」按钮，即可自动打开 Windows 远程桌面客户端
 
-#### 步骤 1: 创建 Vue 组件
-
-在 `src/` 目录下创建新的功能组件：
-
-```vue
-<!-- src/MyFeature/index.vue -->
-<template>
-  <div class="my-feature">
-    <h1>{{ title }}</h1>
-    <!-- 你的组件内容 -->
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref } from 'vue'
-
-const title = ref('我的新功能')
-</script>
-
-<style scoped>
-.my-feature {
-  padding: 20px;
-}
-</style>
-```
-
-#### 步骤 2: 注册路由
-
-在 `src/App.vue` 中添加路由：
-
-```vue
-<script setup lang="ts">
-import MyFeature from './MyFeature/index.vue'
-
-const routes = {
-  hello: Hello,
-  read: Read,
-  write: Write,
-  myfeature: MyFeature // 添加新路由
-}
-</script>
-```
-
-#### 步骤 3: 配置功能
-
-在 `plugin.json` 中添加功能配置：
-
-```json
-{
-  "code": "myfeature",
-  "explain": "我的新功能",
-  "icon": "logo.png",
-  "cmds": ["触发指令"]
-}
-```
-
-### 3. 使用 Node.js 能力
-
-#### 扩展 Preload 服务
-
-编辑 `public/preload/services.js`：
-
-```javascript
-const fs = require('fs')
-const path = require('path')
-
-module.exports = {
-  // 示例：读取文件
-  readFile: (filePath) => {
-    return fs.readFileSync(filePath, 'utf-8')
-  },
-
-  // 添加你的服务
-  myService: (params) => {
-    // 实现你的逻辑
-    return result
-  }
-}
-```
-
-#### 在 Vue 组件中调用
-
-```vue
-<script setup lang="ts">
-const handleRead = async () => {
-  try {
-    const content = await window.services.readFile('/path/to/file')
-    console.log(content)
-  } catch (error) {
-    console.error('读取失败:', error)
-  }
-}
-</script>
-```
-
-### 4. 使用 ZTools API
-
-```vue
-<script setup lang="ts">
-// 获取剪贴板内容
-const text = await window.ztools.getClipboardContent()
-
-// 隐藏主窗口
-window.ztools.hideMainWindow()
-
-// 显示提示
-window.ztools.showTip('操作成功')
-
-// 更多 API 请参考官方文档
-</script>
-```
-
-## 🎨 样式开发
-
-### 使用 CSS 变量
-
-ZTools 提供了一套 CSS 变量用于主题适配：
-
-```css
-.my-component {
-  background: var(--bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-```
-
-### 暗色模式支持
-
-```css
-@media (prefers-color-scheme: dark) {
-  .my-component {
-    /* 暗色模式样式 */
-  }
-}
-```
-
-## 📦 构建与发布
-
-### 1. 构建插件
-
-```bash
-npm run build
-```
-
-### 2. 测试构建产物
-
-将 `dist/` 目录中的所有文件复制到 ZTools 插件目录进行测试。
-
-### 3. 发布到插件市场
-
-1. 确保 `plugin.json` 中的信息完整准确
-2. 准备好插件截图和详细说明
-3. 访问 ZTools 插件市场提交插件
-
-## 📚 相关资源
+## 相关资源
 
 - [ZTools 官方文档](https://github.com/ZToolsCenter/ZTools)
 - [ZTools API 文档](https://github.com/ZToolsCenter/ztools-api-types)
-- [Vue 3 文档](https://vuejs.org/)
-- [Vite 文档](https://vitejs.dev/)
 
-## ❓ 常见问题
-
-### Q: 如何调试插件？
-
-A: 使用 `npm run dev` 启动开发服务器，在插件界面中点击插件头像图标，在弹出的菜单中选择"打开开发者工具"进行调试。
-
-### Q: 如何访问 Node.js 能力？
-
-A: 通过 `public/preload/services.js` 文件扩展服务，然后在组件中使用 `window.services` 调用。
-
-### Q: 插件图标不显示？
-
-A: 确保 `public/logo.png` 文件存在，且在 `plugin.json` 中正确配置了 `logo` 字段。
-
-### Q: 如何处理大文件上传？
-
-A: 建议使用 Node.js 流式处理，在 preload 脚本中实现文件分块处理逻辑。
-
-## 📄 开源协议
+## 开源协议
 
 MIT License
 
 ---
 
-**祝你开发愉快！** 🎉
+**声明：本项目代码大部分由 AI 辅助生成。**
+
