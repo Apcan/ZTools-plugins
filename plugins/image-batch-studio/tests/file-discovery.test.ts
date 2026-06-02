@@ -77,6 +77,31 @@ describe("file discovery", () => {
     }
   });
 
+  it("continues scanning when inspecting one file fails", async () => {
+    const dir = await makeTempDir();
+    const readable = path.join(dir, "readable.png");
+    const unreadable = path.join(dir, "unreadable.pdf");
+    await makeImage(readable);
+    await fs.writeFile(unreadable, "%PDF-1.4\n");
+
+    const originalStat = fs.stat;
+    const stat = vi.spyOn(fs, "stat");
+    stat.mockImplementation(async (targetPath, options) => {
+      if (path.basename(String(targetPath)) === "unreadable.pdf") {
+        throw new Error("file removed while scanning");
+      }
+      return originalStat(targetPath, options as never) as unknown as ReturnType<typeof fs.stat>;
+    });
+
+    try {
+      const files = await discoverFiles([dir]);
+
+      expect(files.map((file) => file.path)).toEqual([readable]);
+    } finally {
+      stat.mockRestore();
+    }
+  });
+
   it("does not revisit circular symlinked directories", async () => {
     const dir = await makeTempDir();
     const readable = path.join(dir, "readable.png");

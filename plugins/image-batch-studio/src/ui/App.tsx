@@ -194,7 +194,7 @@ export function App() {
       window.removeEventListener("image-batch-enter", onEnter);
       window.removeEventListener("image-batch-progress", onProgress);
     };
-  }, [files]);
+  }, []);
 
   useEffect(() => {
     window.ztools?.dbStorage?.setItem?.("image-batch-settings", settings);

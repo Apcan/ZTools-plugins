@@ -446,7 +446,7 @@ export async function mergeImages(
   if (inputPaths.length === 0) throw new Error("No images selected");
   await ensureDirectory(path.dirname(outputPath));
 
-  const prepared: Array<{ inputPath: string; buffer: Buffer; width: number; height: number }> = [];
+  const prepared: Array<{ inputPath: string; buffer: Buffer; width: number; height: number; channels: 1 | 2 | 3 | 4 }> = [];
   let preparedBytes = 0;
   for (const inputPath of inputPaths) {
     const image = await sharp(inputPath, {
@@ -454,7 +454,9 @@ export async function mergeImages(
       limitInputPixels: maxMergeSourcePixels
     })
       .rotate()
-      .png({ compressionLevel: 0 })
+      .toColorspace("srgb")
+      .ensureAlpha()
+      .raw()
       .toBuffer({ resolveWithObject: true });
     preparedBytes += image.data.byteLength;
     if (preparedBytes > maxMergePreparedBytes) {
@@ -464,7 +466,8 @@ export async function mergeImages(
       inputPath,
       buffer: image.data,
       width: image.info.width,
-      height: image.info.height
+      height: image.info.height,
+      channels: image.info.channels as 1 | 2 | 3 | 4
     });
   }
 
@@ -478,7 +481,12 @@ export async function mergeImages(
     height = Math.max(...prepared.map((item) => item.height));
     let left = 0;
     for (const item of prepared) {
-      composites.push({ input: item.buffer, left, top: Math.round((height - item.height) / 2) });
+      composites.push({
+        input: item.buffer,
+        raw: { width: item.width, height: item.height, channels: item.channels },
+        left,
+        top: Math.round((height - item.height) / 2)
+      });
       left += item.width + gap;
     }
   } else if (options.layout === "grid") {
@@ -493,6 +501,7 @@ export async function mergeImages(
       const row = Math.floor(index / columns);
       composites.push({
         input: item.buffer,
+        raw: { width: item.width, height: item.height, channels: item.channels },
         left: col * (cellWidth + gap) + Math.round((cellWidth - item.width) / 2),
         top: row * (cellHeight + gap) + Math.round((cellHeight - item.height) / 2)
       });
@@ -502,7 +511,12 @@ export async function mergeImages(
     height = prepared.reduce((sum, item) => sum + item.height, 0) + gap * (prepared.length - 1);
     let top = 0;
     for (const item of prepared) {
-      composites.push({ input: item.buffer, left: Math.round((width - item.width) / 2), top });
+      composites.push({
+        input: item.buffer,
+        raw: { width: item.width, height: item.height, channels: item.channels },
+        left: Math.round((width - item.width) / 2),
+        top
+      });
       top += item.height + gap;
     }
   }

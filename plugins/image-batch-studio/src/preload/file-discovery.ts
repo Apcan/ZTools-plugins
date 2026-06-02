@@ -53,7 +53,11 @@ async function walk(targetPath: string, visitedDirectories: Set<string>): Promis
 
   if (!stat.isFile()) return [];
   if (!isImagePath(targetPath) && !isPdfPath(targetPath)) return [];
-  return [await inspectFile(targetPath)];
+  try {
+    return [await inspectFile(targetPath)];
+  } catch {
+    return [];
+  }
 }
 
 export async function inspectFile(filePath: string): Promise<SourceFile> {
