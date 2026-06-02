@@ -1,0 +1,14 @@
+{
+  "name": "ztools-plugins",
+  "version": "1.0.0",
+  "description": "Download latest ZTools plugin release assets for static deployment",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/download-latest-assets.js",
+    "download:latest-assets": "node scripts/download-latest-assets.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
