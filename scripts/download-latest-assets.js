@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 import { createWriteStream, existsSync } from 'node:fs';
-import { mkdir, unlink } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { execSync } from 'node:child_process';
 
 const DIST_DIR = 'dist';
+const PUBLIC_ASSET_BASE_URL = 'https://ztools.zosen.link';
 const DOWNLOAD_MAX_ATTEMPTS = 5;
 const DOWNLOAD_RETRY_DELAY_MS = 2000;
+const GITHUB_RELEASE_ASSET_URL_PATTERN = /^https:\/\/github\.com\/ZToolsCenter\/ZTools-plugins\/releases\/download\/[^/]+\/([^/?#]+)([?#].*)?$/;
 
 function printUsage() {
   console.log(`
@@ -121,6 +123,78 @@ async function downloadFileWithRetry(url, destPath, fileName) {
   throw new Error(`已重试 ${DOWNLOAD_MAX_ATTEMPTS} 次仍失败: ${lastError.message}`);
 }
 
+function rewriteReleaseAssetUrls(value) {
+  if (typeof value === 'string') {
+    const match = value.match(GITHUB_RELEASE_ASSET_URL_PATTERN);
+    if (!match) {
+      return {
+        value,
+        changedCount: 0,
+      };
+    }
+
+    return {
+      value: `${PUBLIC_ASSET_BASE_URL}/${match[1]}`,
+      changedCount: 1,
+    };
+  }
+
+  if (Array.isArray(value)) {
+    let changedCount = 0;
+    const nextValue = value.map((item) => {
+      const result = rewriteReleaseAssetUrls(item);
+      changedCount += result.changedCount;
+      return result.value;
+    });
+
+    return {
+      value: nextValue,
+      changedCount,
+    };
+  }
+
+  if (value && typeof value === 'object') {
+    let changedCount = 0;
+    const nextValue = {};
+
+    for (const [key, item] of Object.entries(value)) {
+      const result = rewriteReleaseAssetUrls(item);
+      changedCount += result.changedCount;
+      nextValue[key] = result.value;
+    }
+
+    return {
+      value: nextValue,
+      changedCount,
+    };
+  }
+
+  return {
+    value,
+    changedCount: 0,
+  };
+}
+
+async function updatePluginsJsonDownloadUrls() {
+  const pluginsJsonPath = join(DIST_DIR, 'plugins.json');
+
+  if (!existsSync(pluginsJsonPath)) {
+    console.warn(`未找到 ${pluginsJsonPath}，跳过下载地址更新`);
+    return;
+  }
+
+  const pluginsJson = JSON.parse(await readFile(pluginsJsonPath, 'utf-8'));
+  const { value: updatedPluginsJson, changedCount } = rewriteReleaseAssetUrls(pluginsJson);
+
+  await writeFile(
+    pluginsJsonPath,
+    `${JSON.stringify(updatedPluginsJson, null, 2)}\n`,
+    'utf-8',
+  );
+
+  console.log(`✓ 已更新 plugins.json 中 ${changedCount} 个 GitHub Release 下载地址`);
+}
+
 async function main() {
   const args = new Set(process.argv.slice(2));
   if (args.has('--help') || args.has('-h')) {
@@ -172,6 +246,8 @@ async function main() {
       .join(', ');
     throw new Error(`assets 下载失败 ${failedAssets.length} 个: ${failedList}`);
   }
+
+  await updatePluginsJsonDownloadUrls();
 
   console.log(`\n✓ 所有 assets 已下载到 ${DIST_DIR} 目录`);
 }
