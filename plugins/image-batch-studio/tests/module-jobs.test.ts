@@ -16,7 +16,7 @@ function fullSettings(): ImageJobSettings {
   return {
     output,
     format: { type: "webp", quality: 72, keepMetadata: true },
-    compression: { quality: 64, targetKb: 120, keepMetadata: true },
+    compression: { quality: 64, keepMetadata: true },
     resize: { mode: "exact", width: 400, height: 300, withoutEnlargement: true },
     crop: { left: 12, top: 8, width: 180, height: 120 },
     rotate: 90,
@@ -43,7 +43,7 @@ describe("module job settings", () => {
 
     expect(job).toEqual({
       output,
-      compression: { quality: 64, targetKb: 120, keepMetadata: true }
+      compression: { quality: 64, keepMetadata: true }
     });
   });
 

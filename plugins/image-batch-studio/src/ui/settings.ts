@@ -43,6 +43,10 @@ function enumOrDefault<T extends string>(value: unknown, allowed: readonly T[], 
   return typeof value === "string" && allowed.includes(value as T) ? value as T : fallback;
 }
 
+function enumValue<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  return typeof value === "string" && allowed.includes(value as T) ? value as T : undefined;
+}
+
 function finiteNumberOrDefault(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -54,6 +58,15 @@ function finiteOptionalNumber(value: unknown): number | undefined {
 function positiveOptionalNumber(value: unknown): number | undefined {
   const numberValue = finiteOptionalNumber(value);
   return numberValue !== undefined && numberValue > 0 ? numberValue : undefined;
+}
+
+function nonNegativeOptionalNumber(value: unknown): number | undefined {
+  const numberValue = finiteOptionalNumber(value);
+  return numberValue !== undefined && numberValue >= 0 ? numberValue : undefined;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function normalizeCrop(value: unknown) {
@@ -88,13 +101,33 @@ function normalizeSettings(settings: ImageJobSettings, defaults: ImageJobSetting
   }
 
   if (settings.resize && defaults.resize) {
-    normalized.resize = {
-      mode: enumOrDefault(settings.resize.mode, resizeModes, defaults.resize.mode),
-      width: positiveOptionalNumber(settings.resize.width) ?? defaults.resize.width,
-      height: positiveOptionalNumber(settings.resize.height) ?? defaults.resize.height,
-      background: typeof settings.resize.background === "string" ? settings.resize.background : defaults.resize.background,
-      withoutEnlargement: typeof settings.resize.withoutEnlargement === "boolean" ? settings.resize.withoutEnlargement : defaults.resize.withoutEnlargement
-    };
+    const mode = enumValue(settings.resize.mode, resizeModes);
+    const savedWidth = nonNegativeOptionalNumber(settings.resize.width);
+    const savedHeight = nonNegativeOptionalNumber(settings.resize.height);
+    const hasSavedWidth = hasOwn(settings.resize, "width");
+    const hasSavedHeight = hasOwn(settings.resize, "height");
+    const invalidDimension =
+      (hasSavedWidth && settings.resize.width !== undefined && savedWidth === undefined) ||
+      (hasSavedHeight && settings.resize.height !== undefined && savedHeight === undefined);
+
+    if (!mode || invalidDimension) {
+      normalized.resize = defaults.resize;
+    } else {
+      const dimensionsWereSaved = hasSavedWidth || hasSavedHeight;
+      normalized.resize = {
+        mode,
+        withoutEnlargement: typeof settings.resize.withoutEnlargement === "boolean" ? settings.resize.withoutEnlargement : defaults.resize.withoutEnlargement
+      };
+      if (dimensionsWereSaved) {
+        if (savedWidth !== undefined) normalized.resize.width = savedWidth;
+        if (savedHeight !== undefined) normalized.resize.height = savedHeight;
+      } else {
+        normalized.resize.width = defaults.resize.width;
+        normalized.resize.height = defaults.resize.height;
+      }
+      const background = typeof settings.resize.background === "string" ? settings.resize.background : defaults.resize.background;
+      if (background !== undefined) normalized.resize.background = background;
+    }
   }
 
   normalized.crop = normalizeCrop(settings.crop);
@@ -138,13 +171,12 @@ function normalizeSettings(settings: ImageJobSettings, defaults: ImageJobSetting
   if (settings.compression && defaults.compression) {
     normalized.compression = {
       quality: finiteOptionalNumber(settings.compression.quality) ?? defaults.compression.quality,
-      targetKb: finiteOptionalNumber(settings.compression.targetKb) ?? defaults.compression.targetKb,
       keepMetadata: typeof settings.compression.keepMetadata === "boolean" ? settings.compression.keepMetadata : defaults.compression.keepMetadata
     };
   }
 
   normalized.rotate = finiteOptionalNumber(settings.rotate) ?? defaults.rotate;
-  normalized.flip = enumOrDefault(settings.flip, flipModes, undefined as never);
+  normalized.flip = enumValue(settings.flip, flipModes);
   if (!normalized.flip) delete normalized.flip;
 
   return normalized;

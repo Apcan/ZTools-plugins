@@ -95,7 +95,6 @@ export interface ImageJobSettings {
   watermark?: WatermarkSettings;
   compression?: {
     quality?: number;
-    targetKb?: number;
     keepMetadata?: boolean;
   };
 }

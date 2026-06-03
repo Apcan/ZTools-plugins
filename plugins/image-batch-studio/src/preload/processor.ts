@@ -12,7 +12,7 @@ import type {
   WatermarkPosition
 } from "../shared/types";
 import { buildOutputPath, normalizeExtension } from "./paths";
-import { assertSafeProcessPlan, resolveCropBox } from "./process-plan";
+import { assertSafeProcessPlan, resolveProcessCropBox } from "./process-plan";
 import {
   assertSafeGifRequest,
   assertSafePdfBatch,
@@ -365,10 +365,7 @@ async function processOne(
 
     image = applyResize(image, settings, initialMetadata.width, initialMetadata.height);
 
-    const crop = resolveCropBox(settings, {
-      width: initialMetadata.width,
-      height: initialMetadata.height
-    });
+    const crop = resolveProcessCropBox(settings, initialMetadata.width, initialMetadata.height);
     if (crop) {
       image = image.extract(crop);
     }

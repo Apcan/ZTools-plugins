@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { discoverFiles } from "../src/preload/file-discovery";
+import { createGif } from "../src/preload/processor";
 
 async function makeTempDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "image-batch-discovery-"));
@@ -35,6 +36,20 @@ async function makeHeif(filePath: string) {
     .toFile(filePath);
 }
 
+async function makeAnimatedGif(filePath: string) {
+  const dir = path.dirname(filePath);
+  const first = path.join(dir, "gif-frame-a.png");
+  const second = path.join(dir, "gif-frame-b.png");
+  await makeImage(first);
+  await makeImage(second);
+  await createGif([first, second], filePath, {
+    width: 32,
+    height: 24,
+    delayMs: 100,
+    loop: 0
+  });
+}
+
 describe("file discovery", () => {
   it("discovers HEIF and HEIC image files", async () => {
     const dir = await makeTempDir();
@@ -48,6 +63,19 @@ describe("file discovery", () => {
     expect(files.map((file) => file.path).sort()).toEqual([heic, heif].sort());
     expect(files.every((file) => file.type === "image")).toBe(true);
     expect(files.every((file) => file.format === "heif")).toBe(true);
+  });
+
+  it("uses GIF page height instead of total animated canvas height", async () => {
+    const dir = await makeTempDir();
+    const gif = path.join(dir, "motion.gif");
+    await makeAnimatedGif(gif);
+
+    const [file] = await discoverFiles([gif]);
+
+    expect(file.type).toBe("image");
+    expect(file.format).toBe("gif");
+    expect(file.width).toBe(32);
+    expect(file.height).toBe(24);
   });
 
   it("continues scanning when a child directory cannot be read", async () => {

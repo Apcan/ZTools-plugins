@@ -328,6 +328,25 @@ describe("offline processing engine", () => {
     expect(metadata.height).toBe(36);
   });
 
+  it("clamps crop geometry against resized dimensions before extracting", async () => {
+    const dir = await makeTempDir();
+    const input = path.join(dir, "resize-crop.png");
+    const outputDir = path.join(dir, "out");
+    await makeImage(input, 100, 100, "#446a9d");
+
+    const [result] = await processImages([input], {
+      output: { directory: outputDir, namingPattern: "{name}-clamped.{ext}", overwrite: false },
+      format: { type: "png" },
+      resize: { mode: "exact", width: 50, height: 50, withoutEnlargement: false },
+      crop: { left: 75, top: 0, width: 25, height: 25 }
+    });
+
+    expect(result.ok).toBe(true);
+    const metadata = await sharp(result.outputPath).metadata();
+    expect(metadata.width).toBe(1);
+    expect(metadata.height).toBe(25);
+  });
+
   it("uses atomic create writes when overwrite is disabled", async () => {
     const dir = await makeTempDir();
     const input = path.join(dir, "atomic.png");

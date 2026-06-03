@@ -132,7 +132,7 @@ export async function inspectFile(filePath: string): Promise<SourceFile> {
       ...base,
       type: "image",
       width: metadata?.width,
-      height: metadata?.height,
+      height: metadata?.pageHeight ?? metadata?.height,
       format: metadata?.format
     };
   }

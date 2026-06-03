@@ -398,7 +398,7 @@ export function App() {
 
   function applyResizePreset(value: string) {
     if (value === "original") {
-      updateSettings({ resize: undefined });
+      updateSettings({ resize: { mode: "fit", width: 0, height: 0, withoutEnlargement: true } });
       return;
     }
     if (value === "square") {
@@ -411,7 +411,7 @@ export function App() {
 
   function activeResizePreset() {
     const resize = settings.resize;
-    if (!resize) return "original";
+    if (!resize || (!resize.width && !resize.height)) return "original";
     if (resize.mode === "cover" && resize.width === 1024 && resize.height === 1024) return "square";
     if (resize.width === 1080) return "social";
     if (resize.width === 1920) return "wide";
@@ -527,25 +527,20 @@ export function App() {
               </div>
               <div className="dropdown-list">
                 {files.map((file) => (
-                  <button
-                    key={file.path}
-                    className={`file-row ${file.path === selectedFile?.path ? "active" : ""}`}
-                    onClick={() => file.type === "image" && setSelectedPath(file.path)}
-                  >
-                    <FileImage size={16} />
-                    <span>{file.name}</span>
-                    <small>{file.type === "image" ? `${file.width ?? "-"}×${file.height ?? "-"}` : "PDF"}</small>
-                    <i
-                      role="button"
-                      tabIndex={0}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        removeFile(file.path);
-                      }}
+                  <div key={file.path} className={`file-row ${file.path === selectedFile?.path ? "active" : ""}`}>
+                    <button
+                      className="file-select"
+                      onClick={() => file.type === "image" && setSelectedPath(file.path)}
+                      disabled={file.type !== "image"}
                     >
+                      <FileImage size={16} />
+                      <span>{file.name}</span>
+                      <small>{file.type === "image" ? `${file.width ?? "-"}×${file.height ?? "-"}` : "PDF"}</small>
+                    </button>
+                    <button className="file-remove" onClick={() => removeFile(file.path)} aria-label={`移除 ${file.name}`}>
                       ×
-                    </i>
-                  </button>
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -735,14 +730,14 @@ export function App() {
                 value={settings.resize?.width ?? 0}
                 min={0}
                 max={12000}
-                onChange={(width) => updateSettings({ resize: { ...(settings.resize ?? { mode: "fit" }), width: width || undefined } })}
+                onChange={(width) => updateSettings({ resize: { ...(settings.resize ?? { mode: "fit" }), width } })}
               />
               <NumberInput
                 label="高"
                 value={settings.resize?.height ?? 0}
                 min={0}
                 max={12000}
-                onChange={(height) => updateSettings({ resize: { ...(settings.resize ?? { mode: "fit" }), height: height || undefined } })}
+                onChange={(height) => updateSettings({ resize: { ...(settings.resize ?? { mode: "fit" }), height } })}
               />
               <Toggle
                 label="禁止放大"

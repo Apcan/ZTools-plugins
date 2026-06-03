@@ -79,9 +79,13 @@ export function resolveCropBox(settings: ImageJobSettings, size: { width?: numbe
   return undefined;
 }
 
-function estimateProcessDimensions(settings: ImageJobSettings, source: Dimensions): Dimensions {
+export function estimatePreCropDimensions(settings: ImageJobSettings, source: Dimensions): Dimensions {
   let dimensions = dimensionsAfterRotate(source, settings.rotate);
-  dimensions = dimensionsAfterResize(dimensions, settings);
+  return dimensionsAfterResize(dimensions, settings);
+}
+
+function estimateProcessDimensions(settings: ImageJobSettings, source: Dimensions): Dimensions {
+  let dimensions = estimatePreCropDimensions(settings, source);
   const crop = resolveCropBox(settings, dimensions);
   if (crop) {
     dimensions = { width: crop.width, height: crop.height };
@@ -94,6 +98,12 @@ function estimateProcessDimensions(settings: ImageJobSettings, source: Dimension
     };
   }
   return dimensions;
+}
+
+export function resolveProcessCropBox(settings: ImageJobSettings, width: number | undefined, height: number | undefined): CropBox | undefined {
+  const source = dimensionsFromMetadata(width, height);
+  if (!source) return resolveCropBox(settings, { width, height });
+  return resolveCropBox(settings, estimatePreCropDimensions(settings, source));
 }
 
 export function assertSafeProcessPlan(settings: ImageJobSettings, width: number | undefined, height: number | undefined): void {

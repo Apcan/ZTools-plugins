@@ -141,4 +141,22 @@ describe("settings persistence", () => {
     expect(merged.flip).toBeUndefined();
     expect(merged.crop).toBeUndefined();
   });
+
+  it("preserves the original-size resize preset across persistence", () => {
+    const merged = mergeImageJobSettings(defaults, {
+      resize: {
+        mode: "fit",
+        width: 0,
+        height: 0,
+        withoutEnlargement: true
+      }
+    });
+
+    expect(merged.resize).toEqual({
+      mode: "fit",
+      width: 0,
+      height: 0,
+      withoutEnlargement: true
+    });
+  });
 });
