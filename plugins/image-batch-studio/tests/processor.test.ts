@@ -182,6 +182,35 @@ describe("offline processing engine", () => {
     expect(leftAnchorPixels).toBeGreaterThan(100);
   });
 
+  it("falls back to a safe text watermark color when the configured color is invalid", async () => {
+    const dir = await makeTempDir();
+    const input = path.join(dir, "watermark-color.png");
+    const outputDir = path.join(dir, "out");
+    await makeImage(input, 160, 120, "#000000");
+
+    const [result] = await processImages([input], {
+      output: { directory: outputDir, namingPattern: "{name}-safe-color.{ext}", overwrite: false },
+      format: { type: "png" },
+      watermark: {
+        enabled: true,
+        kind: "text",
+        text: "Z",
+        position: "northwest",
+        opacity: 1,
+        fontSize: 32,
+        color: '#ffffff" /><rect width="160" height="120" fill="#ff0000" /><text fill="#ffffff',
+        margin: 8,
+        rotation: 0
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    const centerPixel = await sharp(result.outputPath).extract({ left: 80, top: 60, width: 1, height: 1 }).raw().toBuffer();
+    expect(centerPixel[0]).toBeLessThan(20);
+    expect(centerPixel[1]).toBeLessThan(20);
+    expect(centerPixel[2]).toBeLessThan(20);
+  });
+
   it("processes HEIF and HEIC inputs through image modules", async () => {
     const dir = await makeTempDir();
     const heifInput = path.join(dir, "source.heif");

@@ -43,4 +43,22 @@ describe("output path helpers", () => {
     expect(fs.existsSync(existingPath)).toBe(true);
     expect(output).toBe(path.join(dir, "sample-1.png"));
   });
+
+  it("keeps naming patterns inside the output directory", async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "image-batch-paths-"));
+
+    const output = buildOutputPath({
+      inputPath: path.join(dir, "sample.png"),
+      outputDirectory: dir,
+      targetFormat: "png",
+      namingPattern: "../nested\\{name}.{ext}",
+      index: 1,
+      overwrite: false
+    });
+
+    expect(path.dirname(output)).toBe(dir);
+    expect(path.basename(output)).not.toContain("..");
+    expect(path.basename(output)).not.toContain("/");
+    expect(path.basename(output)).not.toContain("\\");
+  });
 });

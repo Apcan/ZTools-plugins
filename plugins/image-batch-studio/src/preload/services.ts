@@ -7,6 +7,7 @@ import type {
   MergeImagesOptions,
   SourceFile
 } from "../shared/types";
+import { imageDataUrlToBuffer } from "./data-url";
 import { createGif, mergeImages, mergePdfs, processImages } from "./processor";
 import { discoverFiles, inspectFile, isImagePath, isPdfPath } from "./file-discovery";
 
@@ -41,11 +42,9 @@ function payloadPaths(payload: unknown): string[] {
 async function imagePayloadToFile(payload: unknown): Promise<string[]> {
   if (typeof payload !== "string" || !payload.startsWith("data:image/")) return [];
   await fs.mkdir(tempRoot, { recursive: true });
-  const match = payload.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
-  if (!match) return [];
-  const ext = match[1] === "jpeg" ? "jpg" : match[1];
-  const filePath = path.join(tempRoot, `pasted-${Date.now()}.${ext}`);
-  await fs.writeFile(filePath, Buffer.from(match[2], "base64"));
+  const image = imageDataUrlToBuffer(payload);
+  const filePath = path.join(tempRoot, `pasted-${Date.now()}.${image.ext}`);
+  await fs.writeFile(filePath, image.buffer);
   return [filePath];
 }
 

@@ -9,6 +9,14 @@ export function normalizeExtension(format: ImageFormat | string): string {
   return normalized;
 }
 
+function sanitizeFilename(filename: string): string {
+  const sanitized = filename
+    .replace(/[\\/]+/g, "-")
+    .replace(/[\x00-\x1f\x7f]/g, "")
+    .replace(/^\.+/, "");
+  return sanitized || "output";
+}
+
 export function buildOutputPath(input: OutputPathInput): string {
   const parsed = path.parse(input.inputPath);
   const extension = normalizeExtension(input.targetFormat);
@@ -28,6 +36,7 @@ export function buildOutputPath(input: OutputPathInput): string {
   if (!path.extname(filename)) {
     filename = `${filename}.${extension}`;
   }
+  filename = sanitizeFilename(filename);
 
   const existingPaths = input.existingPaths ?? new Set<string>();
   const candidate = path.join(input.outputDirectory, filename);

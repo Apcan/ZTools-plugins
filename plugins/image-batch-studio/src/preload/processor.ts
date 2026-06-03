@@ -12,13 +12,18 @@ import type {
   WatermarkPosition
 } from "../shared/types";
 import { buildOutputPath, normalizeExtension } from "./paths";
+import {
+  assertSafeGifRequest,
+  assertSafePdfBatch,
+  estimateRgbaBytes,
+  maxMergeDimension,
+  maxMergeGap,
+  maxMergePixels,
+  maxMergePreparedBytes,
+  maxMergeSourcePixels
+} from "./processing-limits";
 
 const imageExtensions = new Set(["jpg", "jpeg", "png", "webp", "avif", "heif", "heic", "tif", "tiff", "gif"]);
-const maxMergeGap = 2000;
-const maxMergeDimension = 30000;
-const maxMergePixels = 80_000_000;
-const maxMergeSourcePixels = 60_000_000;
-const maxMergePreparedBytes = 350 * 1024 * 1024;
 
 function isSupportedImage(filePath: string): boolean {
   return imageExtensions.has(path.extname(filePath).slice(1).toLowerCase());
@@ -65,6 +70,14 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function safeSvgColor(value: string | undefined, fallback = "#ffffff"): string {
+  const color = value?.trim() ?? "";
+  if (/^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?(?:[0-9a-fA-F]{2})?$/.test(color)) {
+    return color;
+  }
+  return fallback;
 }
 
 function gravity(position: WatermarkPosition): sharp.Gravity {
@@ -247,7 +260,7 @@ async function applyWatermark(image: Sharp, settings: ImageJobSettings): Promise
       <g opacity="${opacity}" transform="rotate(${watermark.rotation} ${x} ${y})">
         <text x="${x}" y="${y}"
           text-anchor="${textAnchor(watermark.position)}" dominant-baseline="${dominantBaseline(watermark.position)}"
-          fill="${watermark.color}" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
+          fill="${safeSvgColor(watermark.color)}" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif"
           font-size="${fontSize}" font-weight="700">${text}</text>
       </g>
     </svg>
@@ -428,6 +441,8 @@ export async function processImages(
 
 export async function mergePdfs(inputPaths: string[], outputPath: string): Promise<string> {
   if (inputPaths.length === 0) throw new Error("No PDF files selected");
+  const inputStats = await Promise.all(inputPaths.map((inputPath) => fs.stat(inputPath)));
+  assertSafePdfBatch(inputStats.map((stat) => stat.size));
   await ensureDirectory(path.dirname(outputPath));
   const merged = await PDFDocument.create();
   for (const inputPath of inputPaths) {
@@ -456,7 +471,7 @@ export async function mergeImages(
       animated: false,
       limitInputPixels: maxMergeSourcePixels
     }).metadata();
-    const estimatedBytes = (metadata.width ?? 0) * (metadata.height ?? 0) * 4;
+    const estimatedBytes = estimateRgbaBytes(metadata.width, metadata.height);
     if (preparedBytes + estimatedBytes > maxMergePreparedBytes) {
       throw new Error("拼图输入图片过大，请减少图片数量、先压缩图片或改用更小尺寸");
     }
@@ -556,9 +571,10 @@ export async function createGif(
   options: GifOptions
 ): Promise<string> {
   if (inputPaths.length === 0) throw new Error("No GIF frames selected");
-  await ensureDirectory(path.dirname(outputPath));
   const width = Math.max(1, Math.round(options.width));
   const height = Math.max(1, Math.round(options.height));
+  assertSafeGifRequest(inputPaths.length, width, height);
+  await ensureDirectory(path.dirname(outputPath));
   const encoder = GIFEncoder();
 
   for (const [index, inputPath] of inputPaths.entries()) {
