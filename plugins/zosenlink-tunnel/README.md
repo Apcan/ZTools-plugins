@@ -1,6 +1,6 @@
 # 中森内网穿透
 
-ZTools 内网穿透插件。用户只需要输入客户端激活密钥，插件会从 npmmirror 下载 `zosenlink-node-client` 对应平台二进制并缓存到本地。
+ZTools 内网穿透插件。用户只需要输入客户端激活密钥，插件会从 npmmirror 下载 `zosenlink-core` 对应平台二进制并缓存到本地。
 
 ## 使用
 
@@ -21,12 +21,12 @@ http://39.106.140.106
 插件不再内置客户端二进制。运行时依赖来自 npm 包：
 
 ```text
-https://registry.npmmirror.com/zosenlink-node-client
+https://registry.npmmirror.com/zosenlink-core
 ```
 
 本地缓存目录：
 
 ```text
-macOS: ~/Library/Application Support/ZTools/zosenlink-tunnel/node-client
-Windows: %APPDATA%/ZTools/zosenlink-tunnel/node-client
+macOS: ~/Library/Application Support/ZTools/zosenlink-tunnel/core
+Windows: %APPDATA%/ZTools/zosenlink-tunnel/core
 ```

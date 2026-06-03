@@ -8,7 +8,7 @@ const { execFileSync, spawn } = require("node:child_process");
 
 const MAX_EVENTS = 200;
 const PLATFORM_URL = "http://39.106.140.106";
-const CLIENT_REGISTRY_URL = "https://registry.npmmirror.com/zosenlink-node-client";
+const CLIENT_REGISTRY_URL = "https://registry.npmmirror.com/zosenlink-core";
 const CLIENT_PACKAGE_PREFIX = "package/";
 
 let installPromise = null;
@@ -44,6 +44,10 @@ function platformKey() {
 }
 
 function executableName() {
+  return process.platform === "win32" ? "zosenlink-core.exe" : "zosenlink-core";
+}
+
+function legacyExecutableName() {
   return process.platform === "win32" ? "zosenlink-node-client.exe" : "zosenlink-node-client";
 }
 
@@ -58,11 +62,19 @@ function cacheRoot() {
 }
 
 function clientDir() {
+  return path.join(cacheRoot(), "core");
+}
+
+function legacyClientDir() {
   return path.join(cacheRoot(), "node-client");
 }
 
 function executablePath() {
   return path.join(clientDir(), "bin", platformKey(), executableName());
+}
+
+function legacyExecutablePath() {
+  return path.join(legacyClientDir(), "bin", platformKey(), legacyExecutableName());
 }
 
 function normalizeError(error) {
@@ -382,9 +394,9 @@ async function installClientRuntime(onProgress = emitInstallProgress) {
       return current;
     }
 
-    const tmpTgz = path.join(cacheRoot(), `zosenlink-node-client-${latest.version}-${Date.now()}.tgz`);
-    const tmpClientDir = path.join(cacheRoot(), `.node-client-${process.pid}-${Date.now()}`);
-    const backupDir = path.join(cacheRoot(), `.node-client-backup-${Date.now()}`);
+    const tmpTgz = path.join(cacheRoot(), `zosenlink-core-${latest.version}-${Date.now()}.tgz`);
+    const tmpClientDir = path.join(cacheRoot(), `.core-${process.pid}-${Date.now()}`);
+    const backupDir = path.join(cacheRoot(), `.core-backup-${Date.now()}`);
     try {
       await downloadFile(latest.tarball, tmpTgz, latest.version, onProgress);
       if (latest.shasum) {
@@ -548,8 +560,9 @@ function findDarwinClientPids(file) {
 }
 
 function findWin32ClientPids(file) {
+  const processName = path.basename(file).replace(/'/g, "''");
   const command = [
-    "$items = Get-CimInstance Win32_Process -Filter \"Name='zosenlink-node-client.exe'\"",
+    `$items = Get-CimInstance Win32_Process -Filter "Name='${processName}'"`,
     "| Select-Object ProcessId,ExecutablePath",
     "| ConvertTo-Json -Compress"
   ].join(" ");
@@ -617,7 +630,8 @@ async function cleanupExistingClientProcesses(file) {
     }
   }
 
-  const pids = findExistingClientPids(file);
+  const files = [...new Set([file, legacyExecutablePath()])];
+  const pids = [...new Set(files.flatMap((item) => findExistingClientPids(item)))];
   if (!pids.length) return;
   pushEvent({ source: "plugin", type: "cleanup", message: `启动前清理旧客户端进程：${pids.join(", ")}` });
   for (const pid of pids) {
