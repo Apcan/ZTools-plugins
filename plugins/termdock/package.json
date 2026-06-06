@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
-    "@termdock/core": "file:/Users/zing/Workspace/termdock/packages/core",
     "@vitejs/plugin-react": "^5.1.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
