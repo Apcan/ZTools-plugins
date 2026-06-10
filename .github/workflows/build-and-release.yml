@@ -6,6 +6,11 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      plugins:
+        description: '指定要构建的插件文件夹名，多个可用逗号、空格或换行分隔'
+        required: false
+        type: string
+        default: ''
       build_all:
         description: '构建所有插件（而不是仅构建变动的插件）'
         required: false
@@ -91,6 +96,7 @@ jobs:
         run: node scripts/detect-changes.js
         env:
           BUILD_ALL: ${{ github.event.inputs.build_all || 'false' }}
+          BUILD_PLUGINS: ${{ github.event.inputs.plugins || '' }}
 
       - name: Split changed plugins by platform
         id: split
